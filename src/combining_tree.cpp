@@ -50,7 +50,7 @@ void CombiningTree::Node::spin_lock_for_access(){
     bool test_locked = false;
     while(!locked_.compare_exchange_weak(test_locked, true)){
         test_locked = false;
-        std::this_thread::sleep_for(std::chrono::microseconds(10));
+        std::this_thread::sleep_for(std::chrono::microseconds(micro_backoff_));
     }
 }
 
