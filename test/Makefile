@@ -1,7 +1,7 @@
 # test/Makefile
 
 CXX := g++
-CXXFLAGS := -std=c++20 -g -I../src
+CXXFLAGS := -std=c++20 -o3 -I../src
 SRC_DIR := ../src
 TEST_DIR := .
 OBJS := \
