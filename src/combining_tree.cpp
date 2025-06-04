@@ -148,6 +148,7 @@ void CombiningTree::Node::distribute(int prior){
 
 int CombiningTree::get_and_increment(int id){
     if(id >= width_ || id < 0){
+        std::cout << id << std::endl;
         throw(std::runtime_error("invalid id value"));
     }
 

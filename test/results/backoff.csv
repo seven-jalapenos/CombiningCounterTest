@@ -1,6 +1,0 @@
-backoff in microsec,combining,sequential
-0,226,235
-10,321,209
-100,240,198
-1000,254,212
-10000,258,247

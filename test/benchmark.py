@@ -1,47 +1,53 @@
 import subprocess
 import csv
 import sys
+import re
+import pandas as pd
+import plots
 
-command = "./combining_tree_test" # (threads, contention, runs, op, backoff)
-res_dir = "./results"
+this_dir = "/home/jjurgenson/code_stuff/CombiningCounterTest/test"
+command = f"{this_dir}/combining_tree_test" # (cores, work, runs, op, backoff)
+res_dir = f"{this_dir}/results"
+media_dir = f"{this_dir}/media/run4"
 
 class Runtime:
-    threads = 8
-    contention = 0
-    runs = 10
-    op = 4
-    backoff = 10
+    def __init__(self, params: dict = None):
+        defaults = {
+            "cores": '12',
+            "work": '0',
+            "runs": '10',
+            "op": '4096',
+            "backoff": '10',
+            "threads_per_core": '1'
+        }
+        if params:
+            defaults.update(params)
+        self.__dict__.update(defaults)
     
     def __str__(self):
-        return f"threads: {self.threads}, contention: {self.contention}, op: {self.op}, backoff: {self.backoff}"
+        return f"cores: {self.cores}, work: {self.work}, op: {self.op}, threads per core: {self.threads_per_core}"
+    
+    def __call__(self) -> list:
+        result = None
+        try:
+            result = subprocess.run(
+                [command, self.cores, self.work, self.runs, self.op, self.backoff, self.threads_per_core],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+        except Exception as e:
+            print(f"""run with parameters:
+                {str(self)}
+                has failed""", e)
+            result = "na na"
+        return result.stdout.split()
 
-def benchmark(r: Runtime)->str:
-    st = str(r.threads)
-    sc = str(r.contention)
-    sr = str(r.runs)
-    so = str(r.op)
-    sb = str(r.backoff)
-
-    result = None
-    try:
-        result = subprocess.run(
-            [command, st, sc, sr, so, sb],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-    except Exception as e:
-        print(f"""run with parameters:
-            {str(r)}
-            has failed""", e)
-        result = "na na"
-    return result.stdout.replace(" ", ",")
-
-def write_csv(filename: str, res: list[str]) -> None:
+def write_csv(filename: str, res) -> None:
     with open(filename, "w", newline='') as f:
-        for row in res:
-            f.write(row)
-            f.write("\n")
+        writer = csv.writer(f)
+        writer.writerows(res)
+    print("csv file written")
     
 
 def main():
@@ -51,59 +57,69 @@ def main():
         print("Build failed. Aborting benchmark.")
         sys.exit(1)
 
-    threads = [4, 8, 16, 32, 64]
-    contention = [0, 1, 2, 4, 8]
-    op = [2, 8, 16, 64, 128]
-    backoff = [0, 10, 100, 1000, 10000] # in microseconds
+    # prepare system for benchmark
+    #subprocess.run(['python', 'benchmark_helper.py', 'prepare', '--cores', '0-11'])
 
-    csv_files = ['threads.csv', 'contention.csv', 'op.csv', 'backoff.csv']
-    csv_files = [f"{res_dir}/{x}" for x in csv_files]
+    cores = ['4', '8', '9', '10', '11', '12']
+    threads = ['16', '32']
+    work = ['0', '100', '200', '1000']
 
-    threads_res = ["threads,combining,sequential"]
-    contention_res = ["contention in millsec,combining,sequential"]
-    op_res = ["ops per thread,combining,sequential"]
-    backoff_res = ["backoff in microsec,combining,sequential"]
+    processors_header = ["processors", "combining", "sequential"]
+    processors_res = []
+    processors_files = []
+    work_header = ["work", "combining", "sequential"]
+    work_res = []
+    work_files = []
 
-    runtime = Runtime()
-    print("comparing number of threads...")
+    print("beginning benchmarking...")
+
     for thread in threads:
-        runtime.threads = thread
-        print(str(runtime))
-        res = benchmark(runtime)
-        threads_res.append((f"{thread},{res}"))
-    write_csv(csv_files[0], threads_res)
-    print("done, results saved")
+        processors_res.append(processors_header)
+        for core in cores:
+            params = {"cores": core, "threads_per_core": thread}
+            runtime = Runtime(params)
+            print(runtime)
+            res = runtime()
+            processors_res.append([f'{core}'] + res)
+        file = f"{res_dir}/{'processors'}_t_{thread}.csv"
+        processors_files.append(file)
+        write_csv(file, processors_res)
+        processors_res = []
+    
+    for core in cores:
+        work_res.append(work_header)
+        for w in work:
+            params = {"cores": core, "work": w}
+            runtime = Runtime(params)
+            print(runtime)
+            # res = runtime()
+            # work_res.append([f'{w}'] + res)
+        file = f"{res_dir}/{'work'}_c_{core}.csv"
+        work_files.append(file)
+        # write_csv(file, work_res)
+        work_res = []
 
-    runtime = Runtime()
-    print("comparing thread contention...")
-    for cont in contention:
-        runtime.contention = cont
-        print(str(runtime))
-        res = benchmark(runtime)
-        contention_res.append((f"{cont},{res}"))
-    write_csv(csv_files[1], contention_res)
-    print("done, results saved")
+    print("benchmarking complete")
+   
+    # restore system
+#    subprocess.run(['python', 'benchmark_helper.py', 'restore'])
 
-    runtime = Runtime()
-    print("comparing operations per thread...")
-    for o in op:
-        runtime.op = o
-        print(str(runtime))
-        res = benchmark(runtime)
-        op_res.append((f"{o},{res}"))
-    write_csv(csv_files[2], op_res)
-    print("done, results saved")
+    default = Runtime()
+    op_per_thread = default.op
+    just_name = lambda s: re.split('[/.]', s)[-2]
+    just_const = lambda s: re.split('[_.]', s)[-2]
+    for file in processors_files:
+        df = pd.read_csv(file)
+        title = f"{op_per_thread} increments per thread, {just_const(file)} thread(s) per processor"
+        filename = f"{media_dir}/{just_name(file)}.png"
+        plots.plot_both(df, "Processors", "processors", title, filename)
+    # for file in work_files:
+    #     df = pd.read_csv(file)
+    #     title = f"{op_per_thread} increments per thread, {just_const(file)} processors ({default.threads_per_core} thread(s) per processor)"
+    #     filename = f"{media_dir}/{just_name(file)}.png"
+    #     plots.plot_both(df, "Work", "work", title, filename)
+    
+    print("plots complete")
 
-    runtime = Runtime()
-    print("comparing spinlock backoff...")
-    for back in backoff:
-        runtime.backoff = back
-        print(str(runtime))
-        res = benchmark(runtime)
-        backoff_res.append((f"{back},{res}"))
-    write_csv(csv_files[3], backoff_res)
-    print("done, results saved")
-
-    print("\nbenchmarking complete")
-
-main()
+if __name__ == '__main__':
+	main()
