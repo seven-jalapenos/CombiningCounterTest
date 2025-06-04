@@ -2,8 +2,8 @@
 test/results/*.csv
 test/media/*
 test/combining_tree_test
-.vscode
-.clang
 test/.venv
 test/__pycache__
-
+test/pyvenv.cfg
+.vscode
+.clang
